@@ -153,15 +153,14 @@ function Kinkoku:run(args, text, on_progress)
         end
         UIManager:scheduleIn(2, ticker)
     end
+    self.running, self.killed = true, false
     local completed, output = Trapper:dismissablePopen(cmd, trap)
+    self.running = false
     if ticker then UIManager:unschedule(ticker) end
     UIManager:close(msg)
     UIManager:close(trap)
-    if not completed then
-        local pid = tonumber(read_file(pid_file) or "")
-        if pid then os.execute("kill " .. pid) end
-        return nil, _("Cancelled.")
-    end
+    if not completed then self:kill() end
+    if not completed or self.killed then return nil, _("Cancelled.") end
     local ok, result = pcall(JSON.decode, output or "")
     if not ok or type(result) ~= "table" then
         logger.warn("kinkoku: bad output", output, read_file(err_file))
@@ -170,6 +169,18 @@ function Kinkoku:run(args, text, on_progress)
     end
     if str(result.error) then return nil, result.error end
     return result
+end
+
+function Kinkoku:kill()
+    local pid = tonumber(read_file(self.data_dir .. "/run.pid") or "")
+    if pid then os.execute("kill " .. pid) end
+    self.killed = true
+end
+
+-- a sleeping Kindle keeps the binary and Wi-Fi running otherwise
+function Kinkoku:onSuspend()
+    if self.running then self:kill() end
+    if self.wifi_was_on ~= nil then self:restoreWifi(self.wifi_was_on) end
 end
 
 function Kinkoku:task(fn)
@@ -185,6 +196,7 @@ end
 
 function Kinkoku:show(title, items, opts)
     opts = opts or {}
+    if #self.screens == 0 and self.wifi_was_on == nil then self.wifi_was_on = NetworkMgr:isWifiOn() end
     local menu = Menu:new{
         title = title,
         subtitle = opts.subtitle,
@@ -209,6 +221,12 @@ function Kinkoku:show(title, items, opts)
         for i, s in ipairs(self.screens) do
             if s == m then table.remove(self.screens, i) break end
         end
+        -- next tick, so showLibrary reopening a screen doesn't count as leaving
+        UIManager:nextTick(function()
+            if #self.screens > 0 or self.wifi_was_on == nil then return end
+            self:restoreWifi(self.wifi_was_on)
+            self.wifi_was_on = nil
+        end)
     end
     table.insert(self.screens, menu)
     UIManager:show(menu)
@@ -722,7 +740,7 @@ function Kinkoku:download(src_id, manga_key, keys, opts)
 end
 
 function Kinkoku:restoreWifi(was_on)
-    if not was_on and self:setting("wifi_off", true) and Device:hasWifiToggle() then
+    if not was_on and self:setting("wifi_off", true) and Device:hasWifiToggle() and NetworkMgr:isWifiOn() then
         NetworkMgr:turnOffWifi()
     end
 end
@@ -807,7 +825,7 @@ function Kinkoku:settingsItems()
         toggle("eink", true, _("E-ink page optimization")),
         toggle("dither", false, _("Dithering")),
         toggle("manga_folders", true, _("Save each manga in its own folder")),
-        toggle("wifi_off", true, _("Turn Wi-Fi off after downloads")),
+        toggle("wifi_off", true, _("Turn Wi-Fi off when done")),
         { text = _("View mode"), mandatory = self:setting("view_mode", "page") == "continuous" and _("Continuous") or _("Page by page"), callback = function()
             self:save("view_mode", self:setting("view_mode", "page") == "continuous" and "page" or "continuous")
             self:update(self.settings_menu, self:settingsItems())

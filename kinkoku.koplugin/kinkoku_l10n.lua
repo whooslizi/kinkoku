@@ -36,7 +36,7 @@ local vi = {
     ["Moved %1 file(s)."] = "Đã chuyển %1 tệp.",
     ["E-ink page optimization"] = "Tối ưu trang cho e-ink",
     ["Dithering"] = "Dithering (khuếch tán điểm)",
-    ["Turn Wi-Fi off after downloads"] = "Tắt Wi-Fi sau khi tải",
+    ["Turn Wi-Fi off when done"] = "Tắt Wi-Fi khi xong",
     ["FlareSolverr host"] = "Máy chủ FlareSolverr",
     ["e.g. http://192.168.1.2:8191 (empty = off)"] = "vd. http://192.168.1.2:8191 (để trống = tắt)",
     ["Save"] = "Lưu",
